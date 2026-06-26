@@ -1,0 +1,1 @@
+export { useTableNumber } from './useTableNumber';
