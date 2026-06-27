@@ -1,11 +1,12 @@
 import { io, Socket } from "socket.io-client";
 
-export const RESTAURANT_ID = "FLOWUP001";
+export const RESTAURANT_ID =
+  (import.meta.env.VITE_RESTAURANT_ID as string) || "FLOWUP001";
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
   (import.meta.env.VITE_API_URL
-    ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
+    ? (import.meta.env.VITE_API_URL as string).replace(/\/api\/?$/, "")
     : "http://localhost:5000");
 
 const socket: Socket = io(SOCKET_URL, {
