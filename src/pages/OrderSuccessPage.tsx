@@ -202,6 +202,9 @@ export function OrderSuccessPage() {
       >
         You will be notified once your order is confirmed. Please wait for your order number to be called.
       </motion.p>
+
+      {/* Call Waiter FAB — only for dine-in orders with a table number */}
+      {isDineIn && <CallWaiterButton tableNumber={tableNumber as number} />}
     </div>
   );
 }

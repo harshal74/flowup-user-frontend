@@ -2,9 +2,11 @@ import { io, Socket } from "socket.io-client";
 
 export const RESTAURANT_ID = "FLOWUP001";
 
-const SOCKET_URL = import.meta.env.VITE_API_URL
-  ? import.meta.env.VITE_API_URL.replace("/api", "")
-  : "http://localhost:5000";
+const SOCKET_URL =
+  import.meta.env.VITE_SOCKET_URL ||
+  (import.meta.env.VITE_API_URL
+    ? import.meta.env.VITE_API_URL.replace(/\/api\/?$/, "")
+    : "http://localhost:5000");
 
 const socket: Socket = io(SOCKET_URL, {
   autoConnect: false,
