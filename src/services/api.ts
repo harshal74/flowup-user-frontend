@@ -4,7 +4,7 @@ import axios from 'axios';
 // The Vite proxy (vite.config.ts) forwards /api → http://localhost:5000/api
 // In production: VITE_API_URL = https://your-backend.up.railway.app/api (set on Netlify)
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: import.meta.env.VITE_API_URL || 'https://flowup-backend-1.onrender.com/api',
   headers: { 'Content-Type': 'application/json' },
 });
 
