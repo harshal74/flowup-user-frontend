@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
   ArrowLeft,
@@ -10,7 +10,7 @@ import {
   CheckCircle,
   Navigation,
 } from 'lucide-react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useCart, useRestaurant } from '../context';
 import { orderService } from '../services';
 import type { OrderType } from '../types';
@@ -33,11 +33,12 @@ export function CheckoutPage() {
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
-  const [tableNumber, setTableNumber] =
-  useState<number | null>(null);
+  const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isGettingLocation, setIsGettingLocation] = useState(false);
+  // Prevents the "cart empty → go home" redirect from firing during order submission
+  const orderSubmittedRef = React.useRef(false);
 
   // Load saved customer details from localStorage
   useEffect(() => {
@@ -56,24 +57,21 @@ export function CheckoutPage() {
 
 
 useEffect(() => {
-  const savedTable =
-    localStorage.getItem(
-      "tableNumber"
-    );
+  const savedTable  = localStorage.getItem("tableNumber");
+  const savedExpiry = localStorage.getItem("tableNumber_expiry");
 
   if (
     savedTable &&
-    !isNaN(
-      Number(savedTable)
-    )
+    !isNaN(Number(savedTable)) &&
+    savedExpiry &&
+    Date.now() < Number(savedExpiry)
   ) {
-    setTableNumber(
-      Number(savedTable)
-    );
-
-    setOrderType(
-      "DINE_IN"
-    );
+    setTableNumber(Number(savedTable));
+    setOrderType("DINE_IN");
+  } else {
+    // Expired — clean up
+    localStorage.removeItem("tableNumber");
+    localStorage.removeItem("tableNumber_expiry");
   }
 }, []);
 
@@ -82,14 +80,14 @@ const isQrTableOrder =
 
 const isTableOrder = !!tableNumber;
 
-  // Redirect if cart is empty
+  // Redirect to home if cart is empty — but NOT if we just placed an order
   useEffect(() => {
-    if (items.length === 0) {
+    if (items.length === 0 && !orderSubmittedRef.current) {
       navigate('/');
     }
   }, [items.length, navigate]);
 
-  if (items.length === 0) {
+  if (items.length === 0 && !orderSubmittedRef.current) {
     return null;
   }
 
@@ -253,27 +251,32 @@ const isTableOrder = !!tableNumber;
       })
     );
 
+    // Set flag BEFORE clearCart so the "empty cart → go home" redirect is suppressed
+    orderSubmittedRef.current = true;
     clearCart();
 
-    toast.success(
-      "Order placed successfully!"
-    );
+    toast.success("Order placed successfully!");
 
-localStorage.removeItem(
-  "tableNumber"
-);
+    // ── Keep table number for 3 hours so the customer can reorder ──
+    // Only clear it if it was NOT a QR-assigned table (delivery orders don't have one)
+    if (orderType !== 'DINE_IN' || !tableNumber) {
+      localStorage.removeItem("tableNumber");
+      localStorage.removeItem("tableNumber_expiry");
+    }
+    // For dine-in: refresh the 3-hour expiry window on every successful order
+    if (orderType === 'DINE_IN' && tableNumber) {
+      const expiry = Date.now() + 3 * 60 * 60 * 1000; // 3 hours from now
+      localStorage.setItem("tableNumber", String(tableNumber));
+      localStorage.setItem("tableNumber_expiry", String(expiry));
+    }
 
-    navigate(
-      `/order-success/${response.orderNumber}`,
-      {
-        state: {
-          estimatedTime:
-            response.estimatedTime,
-
-          orderType,
-        },
-      }
-    );
+    navigate(`/order-success/${response.orderNumber}`, {
+      state: {
+        estimatedTime: response.estimatedTime,
+        orderType,
+        tableNumber: orderType === 'DINE_IN' ? tableNumber : null,
+      },
+    });
   } catch (error: any) {
     console.error(
       "Order error:",
