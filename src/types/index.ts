@@ -20,6 +20,8 @@ export interface RestaurantSettings {
   whatsappNotificationsEnabled?: boolean;
   rating?: number;
   totalReviews?: number;
+  /** Dynamic table configuration */
+  totalTables?: number;
 }
 
 // Category
@@ -78,6 +80,11 @@ export interface OrderPayload {
   };
   items: OrderItem[];
   note?: string;
+  /** Optional GPS coordinates for delivery orders */
+  deliveryLocation?: {
+    latitude: number;
+    longitude: number;
+  };
 }
 
 // Order Response

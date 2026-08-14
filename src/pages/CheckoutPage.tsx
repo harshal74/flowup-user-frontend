@@ -9,10 +9,11 @@ import {
   Loader2,
   CheckCircle,
   Navigation,
+  AlertCircle,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, useRestaurant } from '../context';
-import { orderService } from '../services';
+import { orderService, api } from '../services';
 import type { OrderType } from '../types';
 import toast from 'react-hot-toast';
 
@@ -23,6 +24,19 @@ interface SavedCustomer {
   mobile: string;
   address: string;
 }
+
+interface DeliveryLocation {
+  latitude: number;
+  longitude: number;
+}
+
+// Location detection state machine
+type LocationStatus =
+  | 'idle'          // button not yet clicked
+  | 'detecting'     // getting GPS coords
+  | 'geocoding'     // converting coords → address
+  | 'detected'      // success — address populated
+  | 'error';        // any failure
 
 export function CheckoutPage() {
   const navigate = useNavigate();
@@ -36,7 +50,12 @@ export function CheckoutPage() {
   const [tableNumber, setTableNumber] = useState<number | null>(null);
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [isGettingLocation, setIsGettingLocation] = useState(false);
+
+  // ── Location state ─────────────────────────────────────────────
+  const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
+  const [locationError,  setLocationError]  = useState('');
+  const [deliveryLocation, setDeliveryLocation] = useState<DeliveryLocation | null>(null);
+
   // Prevents the "cart empty → go home" redirect from firing during order submission
   const orderSubmittedRef = React.useRef(false);
 
@@ -46,8 +65,8 @@ export function CheckoutPage() {
       const saved = localStorage.getItem(CUSTOMER_STORAGE_KEY);
       if (saved) {
         const customer = JSON.parse(saved) as SavedCustomer;
-        if (customer.name) setName(customer.name);
-        if (customer.mobile) setMobile(customer.mobile);
+        if (customer.name)    setName(customer.name);
+        if (customer.mobile)  setMobile(customer.mobile);
         if (customer.address) setAddress(customer.address);
       }
     } catch {
@@ -55,30 +74,35 @@ export function CheckoutPage() {
     }
   }, []);
 
+  useEffect(() => {
+    const savedTable  = localStorage.getItem("tableNumber");
+    const savedExpiry = localStorage.getItem("tableNumber_expiry");
 
-useEffect(() => {
-  const savedTable  = localStorage.getItem("tableNumber");
-  const savedExpiry = localStorage.getItem("tableNumber_expiry");
+    if (
+      savedTable &&
+      !isNaN(Number(savedTable)) &&
+      savedExpiry &&
+      Date.now() < Number(savedExpiry)
+    ) {
+      setTableNumber(Number(savedTable));
+      setOrderType("DINE_IN");
+    } else {
+      localStorage.removeItem("tableNumber");
+      localStorage.removeItem("tableNumber_expiry");
+    }
+  }, []);
 
-  if (
-    savedTable &&
-    !isNaN(Number(savedTable)) &&
-    savedExpiry &&
-    Date.now() < Number(savedExpiry)
-  ) {
-    setTableNumber(Number(savedTable));
-    setOrderType("DINE_IN");
-  } else {
-    // Expired — clean up
-    localStorage.removeItem("tableNumber");
-    localStorage.removeItem("tableNumber_expiry");
-  }
-}, []);
+  // Reset location state when switching away from Delivery
+  useEffect(() => {
+    if (orderType !== 'DELIVERY') {
+      setLocationStatus('idle');
+      setLocationError('');
+      setDeliveryLocation(null);
+    }
+  }, [orderType]);
 
-const isQrTableOrder =
-  tableNumber !== null;
-
-const isTableOrder = !!tableNumber;
+  const isQrTableOrder = tableNumber !== null;
+  const isTableOrder   = !!tableNumber;
 
   // Redirect to home if cart is empty — but NOT if we just placed an order
   useEffect(() => {
@@ -92,15 +116,24 @@ const isTableOrder = !!tableNumber;
   }
 
   const deliveryCharge = orderType === 'DELIVERY' ? (settings?.deliveryCharge || 0) : 0;
-  const totalAmount = subtotal + deliveryCharge;
+  const totalAmount    = subtotal + deliveryCharge;
 
+  // ── Location handler ───────────────────────────────────────────
   const handleGetLocation = async () => {
+    if (locationStatus === 'detecting' || locationStatus === 'geocoding') return;
+
+    setLocationError('');
+
+    // Step 1 — Check browser support
     if (!navigator.geolocation) {
-      toast.error('Geolocation is not supported by your browser');
+      setLocationStatus('error');
+      setLocationError('Geolocation is not supported by your browser. Please enter your address manually.');
       return;
     }
 
-    setIsGettingLocation(true);
+    setLocationStatus('detecting');
+
+    let coords: GeolocationCoordinates;
     try {
       const position = await new Promise<GeolocationPosition>((resolve, reject) => {
         navigator.geolocation.getCurrentPosition(resolve, reject, {
@@ -109,192 +142,152 @@ const isTableOrder = !!tableNumber;
           maximumAge: 0,
         });
       });
+      coords = position.coords;
+    } catch (err: any) {
+      setLocationStatus('error');
+      // Convert GeolocationPositionError codes to friendly messages
+      if (err?.code === 1) {
+        // PERMISSION_DENIED
+        setLocationError('Location permission was denied. Please enter your delivery address manually.');
+      } else if (err?.code === 2) {
+        // POSITION_UNAVAILABLE
+        setLocationError('Unable to detect your location. Please enter your address manually.');
+      } else if (err?.code === 3) {
+        // TIMEOUT
+        setLocationError('Location request timed out. Please try again or enter your address manually.');
+      } else {
+        setLocationError('Unable to detect your location. Please enter your address manually.');
+      }
+      return;
+    }
 
-      const { latitude, longitude } = position.coords;
-      const locationStr = `\nLat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`;
-      setAddress((prev) => prev + (prev ? locationStr : locationStr));
-      toast.success('Location added successfully');
+    // Step 2 — Reverse geocode via backend proxy (no API key in frontend)
+    setLocationStatus('geocoding');
+    setDeliveryLocation({ latitude: coords.latitude, longitude: coords.longitude });
+
+    try {
+      const res = await api.get('/orders/geocode/reverse', {
+        params: { lat: coords.latitude, lng: coords.longitude },
+      });
+
+      const readable = res.data?.address;
+      if (readable) {
+        setAddress(readable);
+        setLocationStatus('detected');
+      } else {
+        setLocationStatus('error');
+        setLocationError('Unable to find an address for this location. Please enter your address manually.');
+      }
     } catch {
-      toast.error('Failed to get location. Please enable location access.');
-    } finally {
-      setIsGettingLocation(false);
+      // Geocoding failed — still keep coords, let user type address
+      setLocationStatus('error');
+      setLocationError('Unable to find an address for this location. Please enter your address manually.');
     }
   };
 
+  // ── Order submission ───────────────────────────────────────────
   const handleSubmit = async (e?: React.FormEvent) => {
-  if (e) e.preventDefault();
+    if (e) e.preventDefault();
 
-  // Prevent double click orders
-  if (isLoading) return;
+    if (isLoading) return;
 
-  // Restaurant closed check
-  if (!settings?.shopOpen) {
-    toast.error("Restaurant is currently closed");
-    return;
-  }
-
-  // Minimum order validation
-  if (
-    orderType === "DELIVERY" &&
-    subtotal <
-      (settings?.minimumOrderAmount || 0)
-  ) {
-    toast.error(
-      `Minimum order amount is ₹${settings.minimumOrderAmount}`
-    );
-    return;
-  }
-
-  // Name validation
-  if (!name.trim()) {
-    toast.error("Please enter your name");
-    return;
-  }
-
-  // Mobile validation
-  if (
-    !mobile.trim() ||
-    !/^\d{10}$/.test(
-      mobile.replace(/\D/g, "")
-    )
-  ) {
-    toast.error(
-      "Please enter a valid 10-digit mobile number"
-    );
-    return;
-  }
-
-  // Delivery address validation
-  if (
-    orderType === "DELIVERY" &&
-    !address.trim()
-  ) {
-    toast.error(
-      "Please enter your delivery address"
-    );
-    return;
-  }
-
-  // Dine in validation
-  if (
-    orderType === "DINE_IN" &&
-    !tableNumber
-  ) {
-    toast.error(
-      "Please enter table number"
-    );
-    return;
-  }
-
-  setIsLoading(true);
-
-  try {
-    const orderItems = items.map(
-      (item) => ({
-        menuId:
-          item.menuItem._id,
-        quantity:
-          item.quantity,
-      })
-    );
-
-    const orderPayload = {
-      orderType,
-
-      tableNumber:
-        orderType ===
-          "DINE_IN" &&
-        tableNumber
-          ? Number(
-              tableNumber
-            )
-          : undefined,
-
-      customer: {
-        name:
-          name.trim(),
-
-        mobile:
-          mobile.trim(),
-
-        address:
-          orderType ===
-          "DELIVERY"
-            ? address.trim()
-            : undefined,
-      },
-
-      items: orderItems,
-
-      note:
-        notes.trim() ||
-        undefined,
-    };
-
-    const response =
-      await orderService.placeOrder(
-        orderPayload
-      );
-
-    // Save customer details
-    localStorage.setItem(
-      CUSTOMER_STORAGE_KEY,
-      JSON.stringify({
-        name:
-          name.trim(),
-
-        mobile:
-          mobile.trim(),
-
-        address:
-          address.trim(),
-      })
-    );
-
-    // Set flag BEFORE clearCart so the "empty cart → go home" redirect is suppressed
-    orderSubmittedRef.current = true;
-    clearCart();
-
-    toast.success("Order placed successfully!");
-
-    // ── Keep table number for 3 hours so the customer can reorder ──
-    // Only clear it if it was NOT a QR-assigned table (delivery orders don't have one)
-    if (orderType !== 'DINE_IN' || !tableNumber) {
-      localStorage.removeItem("tableNumber");
-      localStorage.removeItem("tableNumber_expiry");
-    }
-    // For dine-in: refresh the 3-hour expiry window on every successful order
-    if (orderType === 'DINE_IN' && tableNumber) {
-      const expiry = Date.now() + 3 * 60 * 60 * 1000; // 3 hours from now
-      localStorage.setItem("tableNumber", String(tableNumber));
-      localStorage.setItem("tableNumber_expiry", String(expiry));
+    if (!settings?.shopOpen) {
+      toast.error("Restaurant is currently closed");
+      return;
     }
 
-    navigate(`/order-success/${response.orderNumber}`, {
-      state: {
-        estimatedTime: response.estimatedTime,
+    if (orderType === "DELIVERY" && subtotal < (settings?.minimumOrderAmount || 0)) {
+      toast.error(`Minimum order amount is ₹${settings.minimumOrderAmount}`);
+      return;
+    }
+
+    if (!name.trim()) {
+      toast.error("Please enter your name");
+      return;
+    }
+
+    if (!mobile.trim() || !/^\d{10}$/.test(mobile.replace(/\D/g, ""))) {
+      toast.error("Please enter a valid 10-digit mobile number");
+      return;
+    }
+
+    if (orderType === "DELIVERY" && !address.trim()) {
+      toast.error("Please enter your delivery address");
+      return;
+    }
+
+    if (orderType === "DINE_IN" && !tableNumber) {
+      toast.error("Please enter table number");
+      return;
+    }
+
+    setIsLoading(true);
+
+    try {
+      const orderItems = items.map((item) => ({
+        menuId:   item.menuItem._id,
+        quantity: item.quantity,
+      }));
+
+      const orderPayload = {
         orderType,
-        tableNumber: orderType === 'DINE_IN' ? tableNumber : null,
-      },
-    });
-  } catch (error: any) {
-    console.error(
-      "Order error:",
-      error
-    );
+        tableNumber:
+          orderType === "DINE_IN" && tableNumber ? Number(tableNumber) : undefined,
+        customer: {
+          name:    name.trim(),
+          mobile:  mobile.trim(),
+          address: orderType === "DELIVERY" ? address.trim() : undefined,
+        },
+        items: orderItems,
+        note:  notes.trim() || undefined,
+        // Include GPS coords if we got them — backend stores but does not require them
+        ...(orderType === "DELIVERY" && deliveryLocation
+          ? { deliveryLocation }
+          : {}),
+      };
 
-    toast.error(
-      error?.response?.data
-        ?.message ||
-        "Failed to place order. Please try again."
-    );
-  } finally {
-    setIsLoading(false);
-  }
-};
+      const response = await orderService.placeOrder(orderPayload);
 
-  const isTableFromUrl =
-  tableNumber !== null;
+      // Save customer details for next visit
+      localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify({
+        name:    name.trim(),
+        mobile:  mobile.trim(),
+        address: address.trim(),
+      }));
+
+      // Set flag BEFORE clearCart so the "empty cart → go home" redirect is suppressed
+      orderSubmittedRef.current = true;
+      clearCart();
+
+      toast.success("Order placed successfully!");
+
+      if (orderType !== 'DINE_IN' || !tableNumber) {
+        localStorage.removeItem("tableNumber");
+        localStorage.removeItem("tableNumber_expiry");
+      }
+      if (orderType === 'DINE_IN' && tableNumber) {
+        const expiry = Date.now() + 3 * 60 * 60 * 1000;
+        localStorage.setItem("tableNumber", String(tableNumber));
+        localStorage.setItem("tableNumber_expiry", String(expiry));
+      }
+
+      navigate(`/order-success/${response.orderNumber}`, {
+        state: {
+          estimatedTime: response.estimatedTime,
+          orderType,
+          tableNumber: orderType === 'DINE_IN' ? tableNumber : null,
+        },
+      });
+    } catch (error: any) {
+      toast.error(
+        error?.response?.data?.message || "Failed to place order. Please try again."
+      );
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // isQrTableOrder already covers this
 
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
@@ -314,7 +307,7 @@ const isTableOrder = !!tableNumber;
 
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 pb-32">
         {/* Order Type Selection */}
-        {!isTableFromUrl && (
+        {!isQrTableOrder && (
           <motion.section
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -492,13 +485,14 @@ const isTableOrder = !!tableNumber;
               <input
                 type="tel"
                 value={mobile}
-                onChange={(e) =>
-  setMobile(
-    e.target.value
-      .replace(/\D/g, "")
-      .slice(0, 10)
-  )
-}
+                onChange={(e) => {
+                  // BUG 30 FIX: strip +91 prefix when pasting international numbers
+                  const digits = e.target.value.replace(/\D/g, '');
+                  const cleaned = digits.startsWith('91') && digits.length === 12
+                    ? digits.slice(2)
+                    : digits;
+                  setMobile(cleaned.slice(0, 10));
+                }}
                 placeholder="10-digit mobile number"
                 className="input-field pl-10"
                 maxLength={10}
@@ -553,30 +547,80 @@ const isTableOrder = !!tableNumber;
                 </label>
                 <textarea
                   value={address}
-                  onChange={(e) => setAddress(e.target.value)}
+                  onChange={(e) => {
+                    setAddress(e.target.value);
+                    // If user manually edits, drop detected state but keep coords
+                    if (locationStatus === 'detected') setLocationStatus('idle');
+                  }}
                   placeholder="Enter your full delivery address..."
                   rows={3}
                   className="input-field resize-none"
                 />
+
+                {/* ── Use current location button ── */}
                 <motion.button
                   type="button"
-                  whileTap={{ scale: 0.98 }}
+                  whileTap={locationStatus !== 'detecting' && locationStatus !== 'geocoding' ? { scale: 0.97 } : {}}
                   onClick={handleGetLocation}
-                  disabled={isGettingLocation}
-                  className="mt-2 flex items-center gap-2 text-sm text-primary-600 dark:text-primary-400 font-medium"
+                  disabled={locationStatus === 'detecting' || locationStatus === 'geocoding'}
+                  className={`mt-2 flex items-center gap-2 text-sm font-medium transition-colors ${
+                    locationStatus === 'detecting' || locationStatus === 'geocoding'
+                      ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                      : locationStatus === 'detected'
+                      ? 'text-green-600 dark:text-green-400'
+                      : 'text-primary-600 dark:text-primary-400 hover:text-primary-700 dark:hover:text-primary-300'
+                  }`}
                 >
-                  {isGettingLocation ? (
+                  {locationStatus === 'detecting' ? (
                     <>
                       <Loader2 className="w-4 h-4 animate-spin" />
-                      Getting location...
+                      Detecting your location…
+                    </>
+                  ) : locationStatus === 'geocoding' ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Finding your address…
+                    </>
+                  ) : locationStatus === 'detected' ? (
+                    <>
+                      <CheckCircle className="w-4 h-4" />
+                      Address detected — tap to refresh
                     </>
                   ) : (
                     <>
                       <Navigation className="w-4 h-4" />
-                      Add my location
+                      Use my current location
                     </>
                   )}
                 </motion.button>
+
+                {/* ── Location error message ── */}
+                {locationStatus === 'error' && locationError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -4 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mt-2 flex items-start gap-2 p-3 rounded-xl
+                               bg-amber-50 dark:bg-amber-900/20
+                               border border-amber-200 dark:border-amber-700"
+                  >
+                    <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-700 dark:text-amber-300">{locationError}</p>
+                  </motion.div>
+                )}
+
+                {/* ── Address verified nudge (shown after auto-detect) ── */}
+                {locationStatus === 'detected' && (
+                  <motion.p
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="mt-1.5 text-xs text-gray-500 dark:text-gray-400"
+                  >
+                    📍 Current location detected. Please verify your address before placing the order.
+                  </motion.p>
+                )}
+
+                {/* HTTPS note — geolocation requires secure context in production */}
+                {/* Note: browsers block geolocation over plain HTTP in production */}
               </motion.div>
             )}
           </AnimatePresence>
