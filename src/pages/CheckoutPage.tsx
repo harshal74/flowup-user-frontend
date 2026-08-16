@@ -281,7 +281,7 @@ export function CheckoutPage() {
         localStorage.removeItem("tableNumber_expiry");
       }
       if (orderType === 'DINE_IN' && tableNumber) {
-        const expiry = Date.now() + 3 * 60 * 60 * 1000;
+        const expiry = Date.now() + 2 * 60 * 60 * 1000;
         localStorage.setItem("tableNumber", String(tableNumber));
         localStorage.setItem("tableNumber_expiry", String(expiry));
       }

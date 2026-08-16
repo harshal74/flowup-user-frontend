@@ -39,13 +39,13 @@ export function HomePage() {
     const table = params.get("table") || params.get("tableNumber");
 
     if (table && !isNaN(Number(table))) {
-      // Fresh QR scan — store with 3-hour expiry
-      const expiry = Date.now() + 3 * 60 * 60 * 1000;
+      // Fresh QR scan — store with 2-hour expiry
+      const expiry = Date.now() + 2 * 60 * 60 * 1000;
       localStorage.setItem("tableNumber", table);
       localStorage.setItem("tableNumber_expiry", String(expiry));
       setTableNumber(Number(table));
     } else {
-      // No QR param — check if a saved table number is still within the 3-hour window
+      // No QR param — check if a saved table number is still within the 2-hour window
       const saved  = localStorage.getItem("tableNumber");
       const expiry = localStorage.getItem("tableNumber_expiry");
       if (saved && !isNaN(Number(saved)) && expiry && Date.now() < Number(expiry)) {
