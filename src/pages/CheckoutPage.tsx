@@ -51,6 +51,11 @@ export function CheckoutPage() {
   const [notes, setNotes] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
+  // Idempotency key — generated ONCE when user clicks "Place Order".
+  // Persists across network retries for the same submission.
+  // Reset to null after a successful order so the next submission gets a fresh key.
+  const idempotencyKeyRef = React.useRef<string | null>(null);
+
   // ── Location state ─────────────────────────────────────────────
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
   const [locationError,  setLocationError]  = useState('');
@@ -223,6 +228,13 @@ export function CheckoutPage() {
 
     setIsLoading(true);
 
+    // Generate idempotency key ONCE per submission intent.
+    // If this is a retry (isLoading was false because previous attempt failed),
+    // reuse the same key so the backend deduplicates.
+    if (!idempotencyKeyRef.current) {
+      idempotencyKeyRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
+    }
+
     try {
       const orderItems = items.map((item) => ({
         menuId:   item.menuItem._id,
@@ -240,6 +252,7 @@ export function CheckoutPage() {
         },
         items: orderItems,
         note:  notes.trim() || undefined,
+        idempotencyKey: idempotencyKeyRef.current,
         // Include GPS coords if we got them — backend stores but does not require them
         ...(orderType === "DELIVERY" && deliveryLocation
           ? { deliveryLocation }
@@ -257,6 +270,8 @@ export function CheckoutPage() {
 
       // Set flag BEFORE clearCart so the "empty cart → go home" redirect is suppressed
       orderSubmittedRef.current = true;
+      // Clear idempotency key — next order will get a fresh one
+      idempotencyKeyRef.current = null;
       clearCart();
 
       toast.success("Order placed successfully!");

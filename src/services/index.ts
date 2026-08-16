@@ -9,7 +9,7 @@ import type {
 } from '../types';
 
 // The restaurantId used across all API calls — driven by env var
-const RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || 'FLOWUP001';
+const RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || '';
 
 // Unwraps both { success, data } and direct API responses
 function unwrap<T>(data: unknown): T {

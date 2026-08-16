@@ -85,6 +85,8 @@ export interface OrderPayload {
     latitude: number;
     longitude: number;
   };
+  /** Idempotency key — prevents duplicate orders on retry/double-click */
+  idempotencyKey?: string;
 }
 
 // Order Response
