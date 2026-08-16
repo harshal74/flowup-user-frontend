@@ -34,6 +34,18 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
       setSettings(settingsData);
       setCategories(categoriesData.sort((a, b) => a.displayOrder - b.displayOrder));
       setMenuItems(menuData);
+
+      // Update browser tab title and favicon from restaurant settings
+      if (settingsData?.restaurantName) {
+        document.title = settingsData.restaurantName;
+      }
+      if (settingsData?.restaurantLogo) {
+        const link: HTMLLinkElement =
+          document.querySelector("link[rel~='icon']") || document.createElement('link');
+        link.rel = 'icon';
+        link.href = settingsData.restaurantLogo;
+        document.head.appendChild(link);
+      }
     } catch (err) {
       setError('Failed to load restaurant data. Please try again.');
       console.error('Error fetching restaurant data:', err);
