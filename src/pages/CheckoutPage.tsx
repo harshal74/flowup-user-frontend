@@ -10,11 +10,13 @@ import {
   CheckCircle,
   Navigation,
   AlertCircle,
+  CreditCard,
+  Banknote,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, useRestaurant } from '../context';
-import { orderService, api } from '../services';
-import type { OrderType } from '../types';
+import { orderService, paymentService, api } from '../services';
+import type { OrderType, PaymentConfig } from '../types';
 import toast from 'react-hot-toast';
 
 const CUSTOMER_STORAGE_KEY = 'flowup_customer';
@@ -55,6 +57,11 @@ export function CheckoutPage() {
   // Persists across network retries for the same submission.
   // Reset to null after a successful order so the next submission gets a fresh key.
   const idempotencyKeyRef = React.useRef<string | null>(null);
+
+  // ── Payment state ──────────────────────────────────────────────
+  const [paymentConfig, setPaymentConfig] = useState<PaymentConfig | null>(null);
+  const [paymentMethod, setPaymentMethod] = useState<'COD' | 'ONLINE'>('COD');
+  const [payingOnline, setPayingOnline]   = useState(false);
 
   // ── Location state ─────────────────────────────────────────────
   const [locationStatus, setLocationStatus] = useState<LocationStatus>('idle');
@@ -103,6 +110,25 @@ export function CheckoutPage() {
       setLocationStatus('idle');
       setLocationError('');
       setDeliveryLocation(null);
+    }
+  }, [orderType]);
+
+  // Fetch payment configuration when delivery is selected
+  useEffect(() => {
+    if (orderType === 'DELIVERY') {
+      paymentService.getConfig().then(config => {
+        setPaymentConfig(config);
+        // Auto-select the appropriate method
+        if (config.deliveryPaymentMode === 'PAYMENT_FIRST') {
+          setPaymentMethod('ONLINE');
+        } else if (config.deliveryPaymentMode === 'COD') {
+          setPaymentMethod('COD');
+        }
+        // For BOTH, default to COD — user can switch
+      }).catch(() => {
+        // Fallback: allow COD if config fails to load
+        setPaymentConfig({ deliveryPaymentMode: 'COD', razorpayKeyId: '' });
+      });
     }
   }, [orderType]);
 
@@ -190,6 +216,113 @@ export function CheckoutPage() {
     }
   };
 
+  // ── Online Payment (Razorpay) ───────────────────────────────────
+  const handleOnlinePayment = async () => {
+    setPayingOnline(true);
+    try {
+      const orderItems = items.map(item => ({
+        menuId: item.menuItem._id,
+        quantity: item.quantity,
+      }));
+
+      // Step 1: Create PaymentIntent + Razorpay order on backend (validates prices server-side)
+      const result = await paymentService.createRazorpayOrder({
+        orderType: 'DELIVERY',
+        customer: { name: name.trim(), mobile: mobile.trim(), address: address.trim() },
+        items: orderItems,
+        note: notes.trim() || undefined,
+        address: address.trim(),
+        ...(deliveryLocation ? { deliveryLocation } : {}),
+        idempotencyKey: idempotencyKeyRef.current || undefined,
+      });
+
+      // If order was already placed (idempotency), navigate to success
+      if (result.alreadyPaid && (result as any).data) {
+        orderSubmittedRef.current = true;
+        idempotencyKeyRef.current = null;
+        clearCart();
+        toast.success('Order already placed!');
+        navigate(`/order-success/${(result as any).data.orderNumber}`, {
+          state: { orderType: 'DELIVERY', tableNumber: null },
+        });
+        return;
+      }
+
+      const { razorpayOrderId, keyId } = result;
+
+      // Step 2: Load Razorpay script if not already loaded
+      if (!window.Razorpay) {
+        await new Promise<void>((resolve, reject) => {
+          const script = document.createElement('script');
+          script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+          script.onload = () => resolve();
+          script.onerror = () => reject(new Error('Failed to load Razorpay'));
+          document.body.appendChild(script);
+        });
+      }
+
+      // Step 3: Open Razorpay Checkout
+      const razorpay = new window.Razorpay!({
+        key: keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || '',
+        amount: Math.round(totalAmount * 100),
+        currency: 'INR',
+        name: settings?.restaurantName || 'FlowUp Restaurant',
+        description: 'Delivery Order',
+        order_id: razorpayOrderId,
+        handler: async (response: RazorpayResponse) => {
+          // Step 4: Verify payment + create order on backend
+          try {
+            const verifyResult = await paymentService.verifyAndCreateOrder({
+              razorpay_order_id: response.razorpay_order_id,
+              razorpay_payment_id: response.razorpay_payment_id,
+              razorpay_signature: response.razorpay_signature,
+              orderPayload: {
+                orderType: 'DELIVERY',
+                customer: { name: name.trim(), mobile: mobile.trim(), address: address.trim() },
+                items: orderItems,
+                note: notes.trim() || undefined,
+                idempotencyKey: idempotencyKeyRef.current || undefined,
+                paymentMethod: 'ONLINE',
+                ...(deliveryLocation ? { deliveryLocation } : {}),
+              },
+            });
+
+            localStorage.setItem(CUSTOMER_STORAGE_KEY, JSON.stringify({
+              name: name.trim(), mobile: mobile.trim(), address: address.trim(),
+            }));
+            orderSubmittedRef.current = true;
+            idempotencyKeyRef.current = null;
+            clearCart();
+            toast.success('Payment successful! Order placed.');
+            navigate(`/order-success/${verifyResult.orderNumber}`, {
+              state: { estimatedTime: verifyResult.estimatedTime, orderType: 'DELIVERY', tableNumber: null },
+            });
+          } catch (err: any) {
+            toast.error(err?.response?.data?.message || 'Payment verified but order creation failed. Please contact the restaurant.');
+          } finally {
+            setPayingOnline(false);
+            setIsLoading(false);
+          }
+        },
+        prefill: { name: name.trim(), contact: mobile.trim() },
+        theme: { color: '#f97316' },
+        modal: {
+          ondismiss: () => {
+            setPayingOnline(false);
+            setIsLoading(false);
+            toast('Payment cancelled', { icon: '❌' });
+          },
+        },
+      });
+
+      razorpay.open();
+    } catch (err: any) {
+      toast.error(err?.response?.data?.message || err?.message || 'Failed to initiate payment');
+      setPayingOnline(false);
+      setIsLoading(false);
+    }
+  };
+
   // ── Order submission ───────────────────────────────────────────
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -229,12 +362,17 @@ export function CheckoutPage() {
     setIsLoading(true);
 
     // Generate idempotency key ONCE per submission intent.
-    // If this is a retry (isLoading was false because previous attempt failed),
-    // reuse the same key so the backend deduplicates.
     if (!idempotencyKeyRef.current) {
       idempotencyKeyRef.current = `${Date.now()}-${Math.random().toString(36).slice(2, 12)}`;
     }
 
+    // ── Route: DELIVERY + ONLINE → Razorpay flow ─────────────────
+    if (orderType === 'DELIVERY' && paymentMethod === 'ONLINE') {
+      await handleOnlinePayment();
+      return;
+    }
+
+    // ── Route: DINE-IN or COD → normal order creation ────────────
     try {
       const orderItems = items.map((item) => ({
         menuId:   item.menuItem._id,
@@ -640,6 +778,60 @@ export function CheckoutPage() {
             )}
           </AnimatePresence>
 
+          {/* Payment Method (delivery only) */}
+          <AnimatePresence>
+            {orderType === 'DELIVERY' && paymentConfig && paymentConfig.deliveryPaymentMode !== 'COD' && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+              >
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2 block">
+                  Payment Method <span className="text-red-500">*</span>
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  {/* Online Payment option */}
+                  {(paymentConfig.deliveryPaymentMode === 'PAYMENT_FIRST' || paymentConfig.deliveryPaymentMode === 'BOTH') && (
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setPaymentMethod('ONLINE')}
+                      className={`p-3 rounded-xl border-2 transition-all flex items-center gap-2 ${
+                        paymentMethod === 'ONLINE'
+                          ? 'border-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <CreditCard className={`w-5 h-5 ${paymentMethod === 'ONLINE' ? 'text-primary-600' : 'text-gray-400'}`} />
+                      <span className={`text-sm font-medium ${paymentMethod === 'ONLINE' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                        Pay Online
+                      </span>
+                    </motion.button>
+                  )}
+
+                  {/* COD option (only for BOTH mode) */}
+                  {paymentConfig.deliveryPaymentMode === 'BOTH' && (
+                    <motion.button
+                      type="button"
+                      whileTap={{ scale: 0.98 }}
+                      onClick={() => setPaymentMethod('COD')}
+                      className={`p-3 rounded-xl border-2 transition-all flex items-center gap-2 ${
+                        paymentMethod === 'COD'
+                          ? 'border-primary-600 bg-primary-50 dark:bg-primary-900/20'
+                          : 'border-gray-200 dark:border-gray-700 hover:border-gray-300'
+                      }`}
+                    >
+                      <Banknote className={`w-5 h-5 ${paymentMethod === 'COD' ? 'text-primary-600' : 'text-gray-400'}`} />
+                      <span className={`text-sm font-medium ${paymentMethod === 'COD' ? 'text-primary-600 dark:text-primary-400' : 'text-gray-700 dark:text-gray-300'}`}>
+                        Cash on Delivery
+                      </span>
+                    </motion.button>
+                  )}
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
           {/* Order Notes */}
           <div>
             <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 block">
@@ -706,7 +898,7 @@ export function CheckoutPage() {
   {isLoading ? (
     <>
       <Loader2 className="w-5 h-5 animate-spin" />
-      Placing Order...
+      {payingOnline ? 'Processing Payment...' : 'Placing Order...'}
     </>
   ) : !settings?.shopOpen ? (
     <>
@@ -716,7 +908,10 @@ export function CheckoutPage() {
   ) : (
     <>
       <CheckCircle className="w-5 h-5" />
-      Place Order − ₹{totalAmount}
+      {orderType === 'DELIVERY' && paymentMethod === 'ONLINE'
+        ? `Pay ₹${totalAmount}`
+        : `Place Order − ₹${totalAmount}`
+      }
     </>
   )}
 </motion.button>

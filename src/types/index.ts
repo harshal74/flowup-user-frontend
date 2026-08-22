@@ -87,6 +87,8 @@ export interface OrderPayload {
   };
   /** Idempotency key — prevents duplicate orders on retry/double-click */
   idempotencyKey?: string;
+  /** Payment method for delivery orders */
+  paymentMethod?: 'COD' | 'ONLINE';
 }
 
 // Order Response
@@ -95,6 +97,12 @@ export interface OrderResponse {
   orderNumber: string;
   status: string;
   estimatedTime: number | null;
+}
+
+// Payment config from backend
+export interface PaymentConfig {
+  deliveryPaymentMode: 'COD' | 'PAYMENT_FIRST' | 'BOTH';
+  razorpayKeyId: string;
 }
 
 // API Response

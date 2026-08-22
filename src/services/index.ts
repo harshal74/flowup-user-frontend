@@ -6,6 +6,7 @@ import type {
   MenuItemCategory,
   OrderPayload,
   OrderResponse,
+  PaymentConfig,
 } from '../types';
 
 // The restaurantId used across all API calls — driven by env var
@@ -67,6 +68,38 @@ export const menuService = {
 export const orderService = {
   placeOrder: async (order: OrderPayload): Promise<OrderResponse> => {
     const response = await api.post('/orders', order);
+    return unwrap<OrderResponse>(response.data);
+  },
+};
+
+export const paymentService = {
+  getConfig: async (): Promise<PaymentConfig> => {
+    const response = await api.get('/payment/config', {
+      params: { restaurantId: RESTAURANT_ID },
+    });
+    return response.data as PaymentConfig;
+  },
+
+  createRazorpayOrder: async (orderData: {
+    orderType: string;
+    customer: { name: string; mobile: string; address?: string };
+    items: { menuId: string; quantity: number; itemNote?: string }[];
+    note?: string;
+    address?: string;
+    deliveryLocation?: { latitude: number; longitude: number };
+    idempotencyKey?: string;
+  }): Promise<{ razorpayOrderId: string; amount: number; currency: string; keyId: string; intentId?: string; alreadyPaid?: boolean }> => {
+    const response = await api.post('/payment/create-order', orderData);
+    return response.data;
+  },
+
+  verifyAndCreateOrder: async (payload: {
+    razorpay_order_id: string;
+    razorpay_payment_id: string;
+    razorpay_signature: string;
+    orderPayload: OrderPayload;
+  }): Promise<OrderResponse> => {
+    const response = await api.post('/payment/verify-and-create-order', payload);
     return unwrap<OrderResponse>(response.data);
   },
 };
