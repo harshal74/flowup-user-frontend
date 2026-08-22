@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { ShoppingCart, Plus, Minus, Trash2, X, ShoppingBag } from 'lucide-react';
 import { useCart, useRestaurant } from '../../context';
 import { useNavigate } from 'react-router-dom';
+import { MenuImage } from '../common/MenuImage';
 
 interface CartBarProps {
   disabled?: boolean;
@@ -131,10 +132,10 @@ export function CartBar({ disabled }: CartBarProps) {
                       className="flex gap-3 bg-gray-50 dark:bg-gray-800 rounded-xl p-3"
                     >
                       {/* Image */}
-                      <img
+                      <MenuImage
                         src={item.menuItem.image}
                         alt={item.menuItem.name}
-                        className="w-20 h-20 rounded-lg object-cover flex-shrink-0"
+                        className="w-20 h-20 rounded-lg flex-shrink-0"
                       />
 
                       {/* Details */}

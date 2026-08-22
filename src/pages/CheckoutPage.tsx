@@ -16,6 +16,7 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useCart, useRestaurant } from '../context';
 import { orderService, paymentService, api } from '../services';
+import { MenuImage } from '../components/common/MenuImage';
 import type { OrderType, PaymentConfig } from '../types';
 import toast from 'react-hot-toast';
 
@@ -243,7 +244,7 @@ export function CheckoutPage() {
         clearCart();
         toast.success('Order already placed!');
         navigate(`/order-success/${(result as any).data.orderNumber}`, {
-          state: { orderType: 'DELIVERY', tableNumber: null },
+          state: { orderType: 'DELIVERY', tableNumber: null, paymentMethod: 'ONLINE' },
         });
         return;
       }
@@ -295,7 +296,7 @@ export function CheckoutPage() {
             clearCart();
             toast.success('Payment successful! Order placed.');
             navigate(`/order-success/${verifyResult.orderNumber}`, {
-              state: { estimatedTime: verifyResult.estimatedTime, orderType: 'DELIVERY', tableNumber: null },
+              state: { estimatedTime: verifyResult.estimatedTime, orderType: 'DELIVERY', tableNumber: null, paymentMethod: 'ONLINE' },
             });
           } catch (err: any) {
             toast.error(err?.response?.data?.message || 'Payment verified but order creation failed. Please contact the restaurant.');
@@ -352,6 +353,21 @@ export function CheckoutPage() {
     if (orderType === "DELIVERY" && !address.trim()) {
       toast.error("Please enter your delivery address");
       return;
+    }
+
+    if (orderType === "DELIVERY" && !deliveryLocation) {
+      toast.error("Please share your live location to continue with delivery");
+      return;
+    }
+
+    if (orderType === "DELIVERY" && deliveryLocation) {
+      if (deliveryLocation.latitude < -90 || deliveryLocation.latitude > 90 ||
+          deliveryLocation.longitude < -180 || deliveryLocation.longitude > 180) {
+        toast.error("Invalid location detected. Please share your location again.");
+        setDeliveryLocation(null);
+        setLocationStatus('idle');
+        return;
+      }
     }
 
     if (orderType === "DINE_IN" && !tableNumber) {
@@ -429,6 +445,7 @@ export function CheckoutPage() {
           estimatedTime: response.estimatedTime,
           orderType,
           tableNumber: orderType === 'DINE_IN' ? tableNumber : null,
+          paymentMethod: orderType === 'DELIVERY' ? paymentMethod : 'COD',
         },
       });
     } catch (error: any) {
@@ -578,10 +595,10 @@ export function CheckoutPage() {
                 transition={{ delay: index * 0.05 }}
                 className="flex items-center gap-3"
               >
-                <img
+                <MenuImage
                   src={item.menuItem.image}
                   alt={item.menuItem.name}
-                  className="w-14 h-14 rounded-lg object-cover"
+                  className="w-14 h-14 rounded-lg"
                 />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 dark:text-white line-clamp-1">
@@ -742,7 +759,7 @@ export function CheckoutPage() {
                   ) : (
                     <>
                       <Navigation className="w-4 h-4" />
-                      Use my current location
+                      Share my live location (required)
                     </>
                   )}
                 </motion.button>
@@ -887,10 +904,11 @@ export function CheckoutPage() {
   onClick={() => handleSubmit()}
   disabled={
     isLoading ||
-    !settings?.shopOpen
+    !settings?.shopOpen ||
+    (orderType === 'DELIVERY' && !deliveryLocation)
   }
   className={`w-full flex items-center justify-center gap-2 ${
-    !settings?.shopOpen
+    !settings?.shopOpen || (orderType === 'DELIVERY' && !deliveryLocation)
       ? "bg-gray-400 cursor-not-allowed text-white py-4 rounded-xl"
       : "btn-primary"
   }`}
@@ -904,6 +922,11 @@ export function CheckoutPage() {
     <>
       <CheckCircle className="w-5 h-5" />
       Restaurant Closed
+    </>
+  ) : orderType === 'DELIVERY' && !deliveryLocation ? (
+    <>
+      <Navigation className="w-5 h-5" />
+      Share Location to Continue
     </>
   ) : (
     <>

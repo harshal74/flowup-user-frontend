@@ -21,6 +21,7 @@ export function OrderSuccessPage() {
   const rawEstimatedTime = location.state?.estimatedTime;
   const estimatedTime = rawEstimatedTime ? `${rawEstimatedTime} minutes` : '20-30 minutes';
   const orderType = location.state?.orderType || 'DINE_IN';
+  const paymentMethodState = location.state?.paymentMethod || 'COD';
 
   // Table number from the order (passed via navigation state or from localStorage)
   const tableNumber = location.state?.tableNumber
@@ -153,6 +154,23 @@ export function OrderSuccessPage() {
               </p>
               <p className="font-semibold text-gray-900 dark:text-white">
                 {orderType === 'DINE_IN' ? 'Dine In' : 'Delivery'}
+              </p>
+            </div>
+          </div>
+
+          {/* Payment Status */}
+          <div className="flex items-center gap-4 p-4 bg-gray-50 dark:bg-gray-700/50 rounded-xl">
+            <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+              paymentMethodState === 'ONLINE'
+                ? 'bg-green-100 dark:bg-green-900/30'
+                : 'bg-amber-100 dark:bg-amber-900/30'
+            }`}>
+              <span className="text-xl">{paymentMethodState === 'ONLINE' ? '💳' : '💵'}</span>
+            </div>
+            <div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">Payment</p>
+              <p className="font-semibold text-gray-900 dark:text-white">
+                {paymentMethodState === 'ONLINE' ? 'Paid Online ✓' : orderType === 'DINE_IN' ? 'Pay at Counter' : 'Cash on Delivery'}
               </p>
             </div>
           </div>

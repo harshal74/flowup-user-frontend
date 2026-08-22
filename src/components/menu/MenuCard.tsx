@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Plus, Star, ChevronDown, ChevronUp } from 'lucide-react';
+import { Plus, Star, ChevronDown, ChevronUp, UtensilsCrossed } from 'lucide-react';
 import type { MenuItem } from '../../types';
 import { VegNonVegBadge } from '../common/VegNonVegBadge';
 import { useCart } from '../../context';
@@ -14,6 +14,7 @@ export function MenuCard({ item, disabled = false }: MenuCardProps) {
   const { addItem, items } = useCart();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(!item.image);
 
   const cartItem = items.find((i) => i.menuItem._id === item._id);
   const quantity = cartItem?.quantity || 0;
@@ -36,18 +37,25 @@ export function MenuCard({ item, disabled = false }: MenuCardProps) {
       >
         {/* Image Container */}
         <div className="relative h-40 bg-gray-100 dark:bg-gray-700 overflow-hidden">
-          {!imageLoaded && (
+          {!imageLoaded && !imageFailed && (
             <div className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />
           )}
-          <img
-            src={item.image}
-            alt={item.name}
-            loading="lazy"
-            onLoad={() => setImageLoaded(true)}
-            className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
-              imageLoaded ? 'opacity-100' : 'opacity-0'
-            } ${!item.isAvailable || disabled ? 'grayscale' : ''}`}
-          />
+          {imageFailed ? (
+            <div className="w-full h-full flex items-center justify-center">
+              <UtensilsCrossed className="w-10 h-10 text-gray-300 dark:text-gray-500" />
+            </div>
+          ) : (
+            <img
+              src={item.image}
+              alt={item.name}
+              loading="lazy"
+              onLoad={() => setImageLoaded(true)}
+              onError={() => setImageFailed(true)}
+              className={`w-full h-full object-cover transition-transform duration-500 group-hover:scale-105 ${
+                imageLoaded ? 'opacity-100' : 'opacity-0'
+              } ${!item.isAvailable || disabled ? 'grayscale' : ''}`}
+            />
+          )}
 
           {/* Badges */}
           <div className="absolute top-2 left-2 flex flex-col gap-1.5">
@@ -177,17 +185,24 @@ function ItemDetailModal({ item, isOpen, onClose, disabled }: ItemDetailModalPro
 
             {/* Image */}
             <div className="relative h-64 bg-gray-100 dark:bg-gray-800">
-              {!imageLoaded && (
+              {!imageLoaded && !imageFailed && (
                 <div className="absolute inset-0 animate-pulse bg-gray-200 dark:bg-gray-700" />
               )}
-              <img
-                src={item.image}
-                alt={item.name}
-                onLoad={() => setImageLoaded(true)}
-                className={`w-full h-full object-cover ${
-                  imageLoaded ? 'opacity-100' : 'opacity-0'
-                } ${!item.isAvailable || disabled ? 'grayscale' : ''}`}
-              />
+              {imageFailed ? (
+                <div className="w-full h-full flex items-center justify-center">
+                  <UtensilsCrossed className="w-12 h-12 text-gray-300 dark:text-gray-500" />
+                </div>
+              ) : (
+                <img
+                  src={item.image}
+                  alt={item.name}
+                  onLoad={() => setImageLoaded(true)}
+                  onError={() => setImageFailed(true)}
+                  className={`w-full h-full object-cover ${
+                    imageLoaded ? 'opacity-100' : 'opacity-0'
+                  } ${!item.isAvailable || disabled ? 'grayscale' : ''}`}
+                />
+              )}
 
               {/* Badges */}
               <div className="absolute top-4 left-4 flex flex-col gap-2">
