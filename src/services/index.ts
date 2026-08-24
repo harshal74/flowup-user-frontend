@@ -1,4 +1,5 @@
 import api from './api';
+import { getRestaurantId } from '../utils/restaurantId';
 import type {
   RestaurantSettings,
   Category,
@@ -8,9 +9,6 @@ import type {
   OrderResponse,
   PaymentConfig,
 } from '../types';
-
-// The restaurantId used across all API calls — driven by env var
-const RESTAURANT_ID = import.meta.env.VITE_RESTAURANT_ID || '';
 
 // Unwraps both { success, data } and direct API responses
 function unwrap<T>(data: unknown): T {
@@ -39,7 +37,7 @@ function normaliseMenuItems(items: MenuItem[]): MenuItem[] {
 export const settingsService = {
   getSettings: async (): Promise<RestaurantSettings> => {
     const response = await api.get('/settings', {
-      params: { restaurantId: RESTAURANT_ID },
+      params: { restaurantId: getRestaurantId() },
     });
     return unwrap<RestaurantSettings>(response.data);
   },
@@ -48,7 +46,7 @@ export const settingsService = {
 export const categoryService = {
   getCategories: async (): Promise<Category[]> => {
     const response = await api.get('/categories', {
-      params: { restaurantId: RESTAURANT_ID },
+      params: { restaurantId: getRestaurantId() },
     });
     const categories = unwrap<Category[]>(response.data);
     return Array.isArray(categories) ? categories.filter((cat) => cat.isActive) : [];
@@ -58,7 +56,7 @@ export const categoryService = {
 export const menuService = {
   getMenuItems: async (): Promise<MenuItem[]> => {
     const response = await api.get('/menu', {
-      params: { restaurantId: RESTAURANT_ID },
+      params: { restaurantId: getRestaurantId() },
     });
     const items = unwrap<MenuItem[]>(response.data);
     return Array.isArray(items) ? normaliseMenuItems(items) : [];
@@ -67,7 +65,10 @@ export const menuService = {
 
 export const orderService = {
   placeOrder: async (order: OrderPayload): Promise<OrderResponse> => {
-    const response = await api.post('/orders', order);
+    const response = await api.post('/orders', {
+      ...order,
+      restaurantId: getRestaurantId(),
+    });
     return unwrap<OrderResponse>(response.data);
   },
 };
@@ -75,7 +76,7 @@ export const orderService = {
 export const paymentService = {
   getConfig: async (): Promise<PaymentConfig> => {
     const response = await api.get('/payment/config', {
-      params: { restaurantId: RESTAURANT_ID },
+      params: { restaurantId: getRestaurantId() },
     });
     return response.data as PaymentConfig;
   },
@@ -89,7 +90,10 @@ export const paymentService = {
     deliveryLocation?: { latitude: number; longitude: number };
     idempotencyKey?: string;
   }): Promise<{ razorpayOrderId: string; amount: number; currency: string; keyId: string; intentId?: string; alreadyPaid?: boolean }> => {
-    const response = await api.post('/payment/create-order', orderData);
+    const response = await api.post('/payment/create-order', {
+      ...orderData,
+      restaurantId: getRestaurantId(),
+    });
     return response.data;
   },
 

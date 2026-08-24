@@ -1,0 +1,12 @@
+SUCCESS
+[36mvite v5.4.8 [32mbuilding for production...[36m[39m
+transforming...
+[32m✓[39m 2706 modules transformed.
+rendering chunks...
+computing gzip size...
+[2mdist/[22m[32mindex.html                        [39m[1m[2m    0.72 kB[22m[1m[22m[2m │ gzip:   0.45 kB[22m
+[2mdist/[22m[35massets/index-C5uJ776c.css         [39m[1m[2m   53.60 kB[22m[1m[22m[2m │ gzip:   8.75 kB[22m
+[2mdist/[22m[36massets/FileSaver.min-DCvHrg3c.js  [39m[1m[2m    2.99 kB[22m[1m[22m[2m │ gzip:   1.47 kB[22m
+[2mdist/[22m[36massets/jszip.min-DJloqAgK.js      [39m[1m[2m   97.42 kB[22m[1m[22m[2m │ gzip:  30.28 kB[22m
+[2mdist/[22m[36massets/index-JyQ99BQd.js          [39m[1m[33m1,060.00 kB[39m[22m[2m │ gzip: 308.91 kB[22m
+[32m✓ built in 11.55s[39m

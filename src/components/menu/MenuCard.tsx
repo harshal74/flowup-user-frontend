@@ -149,6 +149,7 @@ interface ItemDetailModalProps {
 function ItemDetailModal({ item, isOpen, onClose, disabled }: ItemDetailModalProps) {
   const { addItem, removeItem, updateQuantity, items } = useCart();
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageFailed, setImageFailed] = useState(!item.image);
   const [showFullDescription, setShowFullDescription] = useState(false);
 
   const cartItem = items.find((i) => i.menuItem._id === item._id);

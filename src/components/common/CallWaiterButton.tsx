@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { BellRing, CheckCircle, Loader2 } from 'lucide-react';
 import api from '../../services/api';
+import { getRestaurantId } from '../../utils/restaurantId';
 
 interface Props {
   tableNumber: number;
@@ -51,6 +52,7 @@ export function CallWaiterButton({ tableNumber, customerName, orderId }: Props) 
 
     try {
       await api.post('/waiter-requests', {
+        restaurantId: getRestaurantId(),
         tableNumber,
         customerName: customerName || '',
         orderId: orderId || undefined,

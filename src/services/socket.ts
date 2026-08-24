@@ -1,7 +1,5 @@
 import { io, Socket } from "socket.io-client";
-
-export const RESTAURANT_ID =
-  (import.meta.env.VITE_RESTAURANT_ID as string) || "";
+import { getRestaurantId } from "../utils/restaurantId";
 
 const SOCKET_URL =
   import.meta.env.VITE_SOCKET_URL ||
@@ -14,10 +12,16 @@ const socket: Socket = io(SOCKET_URL, {
   reconnection: true,
   reconnectionAttempts: 10,
   reconnectionDelay: 2000,
-  query: { restaurantId: RESTAURANT_ID },
+  query: { restaurantId: getRestaurantId() },
 });
 
 export function connectSocket(): void {
+  // Update query with latest restaurantId before connecting
+  // (in case it was resolved after socket instantiation)
+  const id = getRestaurantId();
+  if (id) {
+    (socket.io.opts.query as Record<string, string>).restaurantId = id;
+  }
   if (!socket.connected) socket.connect();
 }
 

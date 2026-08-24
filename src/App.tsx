@@ -5,8 +5,52 @@ import { HomePage } from './pages/HomePage';
 import { CheckoutPage } from './pages/CheckoutPage';
 import { OrderSuccessPage } from './pages/OrderSuccessPage';
 import { NotFoundPage } from './pages/NotFoundPage';
+import { SlugResolver } from './components/SlugResolver';
+import { hasRestaurantId, hasSlugPath, setRestaurantId } from './utils/restaurantId';
+
+/**
+ * On app boot, extract ?restaurant= from the URL and persist it
+ * in sessionStorage. This runs once before React renders.
+ */
+function initRestaurantFromUrl(): void {
+  const params = new URLSearchParams(window.location.search);
+  const id = params.get('restaurant');
+  if (id && id.trim()) {
+    setRestaurantId(id.trim());
+  }
+}
+
+// Run immediately on module load
+initRestaurantFromUrl();
 
 function App() {
+  // If we have a slug-based path (/restaurant/:slug) but no restaurantId resolved yet,
+  // render the slug resolver which will resolve it to a restaurantId and reload
+  const slugMatch = window.location.pathname.match(/^\/restaurant\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+
+  if (slugMatch && !hasRestaurantId()) {
+    return <SlugResolver slug={slugMatch[1]} />;
+  }
+
+  // If no restaurantId is available and no slug path, show error
+  if (!hasRestaurantId() && !hasSlugPath()) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-6">
+        <div className="text-center max-w-sm">
+          <div className="w-20 h-20 mx-auto mb-6 bg-orange-100 dark:bg-orange-900/30 rounded-full flex items-center justify-center">
+            <span className="text-4xl">🍽️</span>
+          </div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+            Restaurant Not Found
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400 text-sm">
+            Please scan a valid QR code at the restaurant to access the menu.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <ThemeProvider>
       <BrowserRouter>
@@ -14,6 +58,7 @@ function App() {
           <CartProvider>
             <Routes>
               <Route path="/" element={<HomePage />} />
+              <Route path="/restaurant/:slug" element={<HomePage />} />
               <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="/order-success/:orderNumber" element={<OrderSuccessPage />} />
               <Route path="/table/:tableNumber" element={<HomePage />} />

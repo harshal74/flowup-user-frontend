@@ -46,8 +46,15 @@ export function RestaurantProvider({ children }: { children: ReactNode }) {
         link.href = settingsData.restaurantLogo;
         document.head.appendChild(link);
       }
-    } catch (err) {
-      setError('Failed to load restaurant data. Please try again.');
+    } catch (err: any) {
+      const status = err?.response?.status;
+      if (status === 404) {
+        setError('Restaurant not found. Please scan a valid QR code.');
+      } else if (status === 400) {
+        setError('Invalid restaurant. Please scan a valid QR code.');
+      } else {
+        setError('Failed to load restaurant data. Please try again.');
+      }
       console.error('Error fetching restaurant data:', err);
     } finally {
       setIsLoading(false);
