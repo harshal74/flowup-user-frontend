@@ -12,6 +12,7 @@ import { HeroSkeleton, MenuCardSkeleton, CategorySkeleton } from '../components/
 import { FilterChips } from '../components/common/FilterChips';
 import { SEO } from '../components/seo/SEO';
 import { CallWaiterButton } from '../components/common/CallWaiterButton';
+import { DeliveryEnquiryButton } from '../components/common/DeliveryEnquiryButton';
 import type { MenuItemCategory } from '../types';
 
 type FilterType = 'all' | 'veg' | 'non-veg' | 'recommended';
@@ -318,6 +319,9 @@ export function HomePage() {
 
       {/* Call Waiter FAB — only visible for QR/table-based dine-in sessions */}
       {tableNumber && <CallWaiterButton tableNumber={tableNumber} />}
+
+      {/* Delivery Enquiry FAB — always visible so customers can ask about delivery */}
+      <DeliveryEnquiryButton />
 
       {/* Cart Bar */}
       <CartBar disabled={isShopClosed} />
