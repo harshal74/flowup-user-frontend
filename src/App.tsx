@@ -6,7 +6,8 @@ import { CheckoutPage } from './pages/CheckoutPage';
 import { OrderSuccessPage } from './pages/OrderSuccessPage';
 import { NotFoundPage } from './pages/NotFoundPage';
 import { SlugResolver } from './components/SlugResolver';
-import { hasRestaurantId, hasSlugPath, setRestaurantId } from './utils/restaurantId';
+import { LandingPage } from './pages/LandingPage';
+import { hasRestaurantId, hasSlugPath, getRestaurantSlug, setRestaurantId } from './utils/restaurantId';
 
 /**
  * On app boot, extract ?restaurant= from the URL and persist it
@@ -24,15 +25,27 @@ function initRestaurantFromUrl(): void {
 initRestaurantFromUrl();
 
 function App() {
-  // If we have a slug-based path (/restaurant/:slug) but no restaurantId resolved yet,
-  // render the slug resolver which will resolve it to a restaurantId and reload
-  const slugMatch = window.location.pathname.match(/^\/restaurant\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  const pathname = window.location.pathname.replace(/\/+$/, '') || '/';
 
-  if (slugMatch && !hasRestaurantId()) {
-    return <SlugResolver slug={slugMatch[1]} />;
+  // Root URL with no restaurant context → intentional FlowUp entry page.
+  // (No slug, no ?restaurant= id, and not a resolvable slug path.)
+  if (pathname === '/' && !hasRestaurantId() && !hasSlugPath()) {
+    return (
+      <ThemeProvider>
+        <LandingPage />
+      </ThemeProvider>
+    );
   }
 
-  // If no restaurantId is available and no slug path, show error
+  // If we have a slug-based path (/:slug or /restaurant/:slug) but no
+  // restaurantId resolved yet, render the resolver which converts the slug
+  // to a restaurantId and reloads.
+  const slug = getRestaurantSlug();
+  if (slug && !hasRestaurantId()) {
+    return <SlugResolver slug={slug} />;
+  }
+
+  // If no restaurantId is available and no slug path, show not-found.
   if (!hasRestaurantId() && !hasSlugPath()) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-6">
@@ -62,6 +75,8 @@ function App() {
               <Route path="/checkout" element={<CheckoutPage />} />
               <Route path="/order-success/:orderNumber" element={<OrderSuccessPage />} />
               <Route path="/table/:tableNumber" element={<HomePage />} />
+              {/* Root-level slug: app.flowup.co.in/brew-cafe */}
+              <Route path="/:slug" element={<HomePage />} />
               <Route path="*" element={<NotFoundPage />} />
             </Routes>
             <Toaster

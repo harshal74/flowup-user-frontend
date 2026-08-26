@@ -23,12 +23,41 @@ function getFromUrl(): string | null {
   return params.get('restaurant') || null;
 }
 
+// Path segments that are real app routes, NOT restaurant slugs.
+// A root-level path like /brew-cafe is treated as a slug ONLY if the first
+// segment is not one of these reserved app routes.
+const RESERVED_PATHS = new Set([
+  'checkout', 'order-success', 'table', 'restaurant',
+]);
+
+const SLUG_SEGMENT_RE = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
 /**
- * Extract restaurant slug from path-based URL: /restaurant/:slug
+ * Extract restaurant slug from the URL path.
+ *
+ * Supports two shapes (backward compatible):
+ *   1. /restaurant/:slug   (legacy explicit form — kept working)
+ *   2. /:slug              (root-level public form — app.flowup.co.in/brew-cafe)
+ *
+ * Returns null if the path doesn't contain a resolvable slug.
  */
 function getSlugFromPath(): string | null {
-  const match = window.location.pathname.match(/^\/restaurant\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
-  return match ? match[1] : null;
+  const path = window.location.pathname.replace(/\/+$/, ''); // strip trailing slash
+
+  // Legacy: /restaurant/:slug
+  const explicit = path.match(/^\/restaurant\/([a-z0-9]+(?:-[a-z0-9]+)*)$/);
+  if (explicit) return explicit[1];
+
+  // Root-level: /:slug  (single segment only)
+  const segments = path.split('/').filter(Boolean);
+  if (segments.length === 1) {
+    const seg = segments[0].toLowerCase();
+    if (SLUG_SEGMENT_RE.test(seg) && !RESERVED_PATHS.has(seg)) {
+      return seg;
+    }
+  }
+
+  return null;
 }
 
 /**
