@@ -60,7 +60,7 @@ export interface CartItem {
 }
 
 // Order Type
-export type OrderType = 'DINE_IN' | 'DELIVERY';
+export type OrderType = 'DINE_IN' | 'DELIVERY' | 'TAKE_AWAY';
 
 // Order item sent to backend
 export interface OrderItem {

@@ -12,6 +12,7 @@ import {
   AlertCircle,
   CreditCard,
   Banknote,
+  ShoppingBag,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useCart, useRestaurant } from '../context';
@@ -19,6 +20,7 @@ import { orderService, paymentService, api } from '../services';
 import { MenuImage } from '../components/common/MenuImage';
 import type { OrderType, PaymentConfig } from '../types';
 import toast from 'react-hot-toast';
+import { isValidMobile, MOBILE_ERROR_MESSAGE } from '../utils/validateMobile';
 
 const CUSTOMER_STORAGE_KEY = 'flowup_customer';
 
@@ -46,7 +48,7 @@ export function CheckoutPage() {
   const { items, subtotal, clearCart } = useCart();
   const { settings } = useRestaurant();
 
-  const [orderType, setOrderType] = useState<OrderType>('DELIVERY');
+  const [orderType, setOrderType] = useState<OrderType>('DELIVERY');  // default when no table
   const [name, setName] = useState('');
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
@@ -147,7 +149,7 @@ export function CheckoutPage() {
     return null;
   }
 
-  const deliveryCharge = orderType === 'DELIVERY' ? (settings?.deliveryCharge || 0) : 0;
+  const deliveryCharge = orderType === 'DELIVERY' ? (settings?.deliveryCharge || 0) : 0;  // TAKE_AWAY has no delivery charge
   const totalAmount    = subtotal + deliveryCharge;
 
   // ── Location handler ───────────────────────────────────────────
@@ -265,7 +267,11 @@ export function CheckoutPage() {
       // Step 3: Open Razorpay Checkout
       const razorpay = new window.Razorpay!({
         key: keyId || import.meta.env.VITE_RAZORPAY_KEY_ID || '',
-        amount: Math.round(totalAmount * 100),
+        // FIX M8: Use the server-validated amount from the API response rather than
+        // the locally calculated totalAmount. The backend is the authoritative source
+        // for prices. Using result.amount prevents a discrepancy if the delivery charge
+        // changed between page load and checkout initiation.
+        amount: result.amount,
         currency: 'INR',
         name: settings?.restaurantName || 'FlowUp Restaurant',
         description: 'Delivery Order',
@@ -345,8 +351,8 @@ export function CheckoutPage() {
       return;
     }
 
-    if (!mobile.trim() || !/^\d{10}$/.test(mobile.replace(/\D/g, ""))) {
-      toast.error("Please enter a valid 10-digit mobile number");
+    if (!mobile.trim() || !isValidMobile(mobile)) {
+      toast.error(MOBILE_ERROR_MESSAGE);
       return;
     }
 
@@ -487,40 +493,9 @@ export function CheckoutPage() {
               Order Type
             </h2>
            {!isTableOrder ? (
+  // No table number — show Delivery and Take Away only
   <div className="grid grid-cols-2 gap-3">
-    <motion.button
-      whileTap={{ scale: 0.98 }}
-      type="button"
-      onClick={() => setOrderType("DINE_IN")}
-      className={`p-4 rounded-xl border-2 transition-all ${
-        orderType === "DINE_IN"
-          ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20"
-          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
-      }`}
-    >
-      <div className="text-center">
-        <div
-          className={`w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center ${
-            orderType === "DINE_IN"
-              ? "bg-primary-600 text-white"
-              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
-          }`}
-        >
-          <User className="w-6 h-6" />
-        </div>
-
-        <p
-          className={`font-semibold ${
-            orderType === "DINE_IN"
-              ? "text-primary-600 dark:text-primary-400"
-              : "text-gray-900 dark:text-white"
-          }`}
-        >
-          Dine In
-        </p>
-      </div>
-    </motion.button>
-
+    {/* Delivery */}
     <motion.button
       whileTap={{ scale: 0.98 }}
       type="button"
@@ -541,7 +516,6 @@ export function CheckoutPage() {
         >
           <MapPin className="w-6 h-6" />
         </div>
-
         <p
           className={`font-semibold ${
             orderType === "DELIVERY"
@@ -550,6 +524,45 @@ export function CheckoutPage() {
           }`}
         >
           Delivery
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+          We deliver to you
+        </p>
+      </div>
+    </motion.button>
+
+    {/* Take Away */}
+    <motion.button
+      whileTap={{ scale: 0.98 }}
+      type="button"
+      onClick={() => setOrderType("TAKE_AWAY")}
+      className={`p-4 rounded-xl border-2 transition-all ${
+        orderType === "TAKE_AWAY"
+          ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20"
+          : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
+      }`}
+    >
+      <div className="text-center">
+        <div
+          className={`w-12 h-12 mx-auto mb-2 rounded-full flex items-center justify-center ${
+            orderType === "TAKE_AWAY"
+              ? "bg-primary-600 text-white"
+              : "bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400"
+          }`}
+        >
+          <ShoppingBag className="w-6 h-6" />
+        </div>
+        <p
+          className={`font-semibold ${
+            orderType === "TAKE_AWAY"
+              ? "text-primary-600 dark:text-primary-400"
+              : "text-gray-900 dark:text-white"
+          }`}
+        >
+          Take Away
+        </p>
+        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">
+          Pick up yourself
         </p>
       </div>
     </motion.button>

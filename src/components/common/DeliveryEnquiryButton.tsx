@@ -3,8 +3,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Truck, X, CheckCircle, Loader2, Send } from 'lucide-react';
 import api from '../../services/api';
 import { getRestaurantId } from '../../utils/restaurantId';
+import { isValidMobile, MOBILE_ERROR_MESSAGE } from '../../utils/validateMobile';
 
-const MOBILE_RE = /^[+]?[\d\s\-()+]{7,20}$/;
 const EMAIL_RE  = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 interface FormState {
@@ -44,7 +44,7 @@ export function DeliveryEnquiryButton() {
     else if (form.customerName.trim().length > 100) e.customerName = 'Name is too long (max 100 chars).';
 
     if (!form.mobile.trim())               e.mobile = 'Mobile number is required.';
-    else if (!MOBILE_RE.test(form.mobile.trim())) e.mobile = 'Please enter a valid mobile number.';
+    else if (!isValidMobile(form.mobile.trim())) e.mobile = MOBILE_ERROR_MESSAGE;
 
     if (!form.address.trim())              e.address = 'Delivery address is required.';
     else if (form.address.trim().length > 500)    e.address = 'Address is too long (max 500 chars).';
