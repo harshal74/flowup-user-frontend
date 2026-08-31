@@ -116,6 +116,13 @@ export function CheckoutPage() {
     }
   }, [orderType]);
 
+  // Auto-switch away from Delivery if online delivery gets disabled
+  useEffect(() => {
+    if (settings?.onlineDeliveryEnabled === false && orderType === 'DELIVERY') {
+      setOrderType('TAKE_AWAY');
+    }
+  }, [settings?.onlineDeliveryEnabled, orderType]);
+
   // Fetch payment configuration when delivery is selected
   useEffect(() => {
     if (orderType === 'DELIVERY') {
@@ -137,6 +144,7 @@ export function CheckoutPage() {
 
   const isQrTableOrder = tableNumber !== null;
   const isTableOrder   = !!tableNumber;
+  const deliveryEnabled = settings?.onlineDeliveryEnabled !== false;
 
   // Redirect to home if cart is empty — but NOT if we just placed an order
   useEffect(() => {
@@ -493,9 +501,20 @@ export function CheckoutPage() {
               Order Type
             </h2>
            {!isTableOrder ? (
-  // No table number — show Delivery and Take Away only
-  <div className="grid grid-cols-2 gap-3">
+  // No table number — show available order types
+  <div className="space-y-3">
+    {/* Delivery unavailable banner */}
+    {!deliveryEnabled && (
+      <div className="flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
+        <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <p className="text-xs text-amber-700 dark:text-amber-300">
+          Delivery is currently unavailable. You can still place a Take Away order.
+        </p>
+      </div>
+    )}
+    <div className="grid grid-cols-2 gap-3">
     {/* Delivery */}
+    {deliveryEnabled && (
     <motion.button
       whileTap={{ scale: 0.98 }}
       type="button"
@@ -530,6 +549,7 @@ export function CheckoutPage() {
         </p>
       </div>
     </motion.button>
+    )}
 
     {/* Take Away */}
     <motion.button
@@ -537,6 +557,8 @@ export function CheckoutPage() {
       type="button"
       onClick={() => setOrderType("TAKE_AWAY")}
       className={`p-4 rounded-xl border-2 transition-all ${
+        !deliveryEnabled ? "col-span-2" : ""
+      } ${
         orderType === "TAKE_AWAY"
           ? "border-primary-600 bg-primary-50 dark:bg-primary-900/20"
           : "border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600"
@@ -566,6 +588,7 @@ export function CheckoutPage() {
         </p>
       </div>
     </motion.button>
+    </div>
   </div>
 ) : (
   <div className="p-4 rounded-xl border-2 border-primary-600 bg-primary-50 dark:bg-primary-900/20">

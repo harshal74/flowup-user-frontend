@@ -22,6 +22,8 @@ export interface RestaurantSettings {
   totalReviews?: number;
   /** Dynamic table configuration */
   totalTables?: number;
+  /** When false, Delivery orders are disabled — only Take Away and Dine In are available */
+  onlineDeliveryEnabled?: boolean;
 }
 
 // Category
